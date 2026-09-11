@@ -16,7 +16,7 @@ whether the human can direct the build, judge the output, and explain every deci
 2. **Prove, then STOP. Do not commit.** After a stage works, print concise proof (see Build
    protocol) and stop. The human reviews and commits manually — you never run git.
 3. **Never modify a working stage or the shared schema** unless the active spec explicitly says to.
-   `src/extract.py` and `src/score.py` already exist and are correct — treat them as frozen.
+   `src/scrape.py` and `src/score.py` already exist and are correct — treat them as frozen.
 4. **Deterministic scripts only.** The LLM is a *labeled step* (extraction, generation), never
    an agent that decides the winner. The winner is chosen by arithmetic in `score.py`.
 5. **Inspect, don't guess.** If an external field name / actor output / API shape is unknown,
@@ -64,10 +64,10 @@ the winning cluster. Structural distinctiveness is an outlier flag, not a positi
 guidde-ad-intel/
 ├─ CLAUDE.md              (this file)
 ├─ README.md  .env  .env.example  .gitignore  requirements.txt  architecture.mermaid
-├─ src/       scrape.py  extract.py ✓  score.py ✓  generate.py
+├─ src/       scrape.py ✓  extract.py  score.py ✓  generate.py
 ├─ data/      ads_raw.json  ads.json  winner.json      (gitignored scratch)
 ├─ results/   02_scoreboard.md  03_winner.json  04_brief.md  05_storyboard/   (committed)
-└─ docs/build/  01-scrape.md  02-generate.md            (per-stage specs)
+└─ docs/build/  01-scrape.md  02-extract.md  03-generate.md   (per-stage specs)
 ```
 
 ## Secrets
@@ -84,3 +84,5 @@ committed. Load with `python-dotenv`. Never print or commit a key.
 - Built & frozen: `src/scrape.py`, `src/score.py`
 - **Active stage: `src/extract.py` — spec in `docs/build/02-extract.md`**
 - Not yet started: `src/generate.py` (spec `docs/build/03-generate.md`)
+- Read `docs/build/02-extract.md` first — it is the active spec. It is not in the repo
+  yet; do not start stage 02 until it lands.
