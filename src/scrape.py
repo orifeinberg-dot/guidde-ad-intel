@@ -87,18 +87,80 @@ def pick_start_date(rec: dict) -> str | None:
     return None
 
 
+# display_format -> our closed FORMATS vocabulary. Only these values are a real
+# creative format; DCO is a DELIVERY mode (Dynamic Creative Optimization) whose
+# actual media lives in snapshot.cards[], so it resolves by inspecting the media.
+DISPLAY_FORMAT_MAP = {
+    "IMAGE": "image",
+    "VIDEO": "video",
+    "CAROUSEL": "carousel",
+    "MULTI_IMAGES": "carousel",
+    "DPA": "carousel",
+}
+
+
+def media_format(snap: dict) -> str | None:
+    """
+    What the creative actually IS, judged from the media attached to it.
+
+    NOTE: multiple cards[] does NOT mean carousel. Under DCO, cards[] are creative
+    VARIANTS that Meta rotates — verified on this ad set: 68 of 89 non-video
+    multi-card ads carry byte-identical title+body across every card with only the
+    image swapped, and the rest are headline x image combinations. Treating them as
+    carousels would invent a format Scribe does not run and split the cluster key
+    on noise. A real carousel is only recognised from an explicit display_format
+    or from multiple top-level images.
+    """
+    cards = [c for c in (snap.get("cards") or []) if isinstance(c, dict)]
+    has_video = bool(snap.get("videos")) or any(
+        c.get("video_hd_url") or c.get("video_sd_url") for c in cards)
+    if has_video:
+        return "video"
+    if len(snap.get("images") or []) > 1:
+        return "carousel"
+    if snap.get("images") or cards:
+        return "image"
+    return None
+
+
+def pick_format(rec: dict) -> tuple[str, bool]:
+    """
+    Returns (format, used_blind_default).
+
+    format is cluster-defining in score.py, so it comes from the scrape — which
+    can see videos/cards — never from a still frame downstream.
+    """
+    snap = rec.get("snapshot") or {}
+    mapped = DISPLAY_FORMAT_MAP.get((snap.get("display_format") or "").strip().upper())
+    if mapped:
+        return mapped, False
+    actual = media_format(snap)
+    if actual:
+        return actual, False
+    return "image", True          # no display_format, no media — counted and reported
+
+
 def pick_impression_bucket(rec: dict) -> str | None:
     """Populated only for political/issue ads; null for commercial. Kept for correctness."""
     return _clean((rec.get("impressions_with_index") or {}).get("impressions_text")) or None
 
 
-def pick_image_url(rec: dict) -> str:
+def pick_image_url(rec: dict, fmt: str | None = None) -> str:
     """Primary creative still. For video ads that's the preview frame."""
     snap = rec.get("snapshot") or {}
     pools = [snap.get("videos"), snap.get("images"), snap.get("cards"),
              snap.get("extra_videos"), snap.get("extra_images")]
     fields = ("video_preview_image_url", "original_image_url",
               "resized_image_url", "watermarked_resized_image_url")
+    if fmt == "video":
+        # A video ad's representative frame is its preview frame, wherever it
+        # lives — never a stray still that happens to sit earlier in the pools.
+        for pool in pools:
+            for entry in pool or []:
+                if isinstance(entry, dict):
+                    url = _clean(entry.get("video_preview_image_url"))
+                    if url:
+                        return url
     for pool in pools:
         for entry in pool or []:
             if not isinstance(entry, dict):
@@ -131,13 +193,16 @@ def to_record(rec: dict) -> dict | None:
     start_date = pick_start_date(rec)
     if not ad_id or not start_date:
         return None
+    fmt, blind = pick_format(rec)
     return {
         "ad_id": ad_id,
         "start_date": start_date,
+        "format": fmt,
         "impression_bucket": pick_impression_bucket(rec),
         "impression_rank": None,          # assigned after filtering, from actor order
-        "image_url": pick_image_url(rec),
+        "image_url": pick_image_url(rec, fmt),
         "ad_text": pick_ad_text(rec),
+        "_blind_format_default": blind,   # proof-only, stripped before writing
     }
 
 
@@ -167,12 +232,18 @@ def main():
     raw = fetch()
 
     kept, dropped = [], 0
+    crosstab: dict[tuple[str, str], int] = {}
     for rec in raw:
         mapped = to_record(rec)
         if mapped is None:
             dropped += 1
             continue
+        df = (rec.get("snapshot") or {}).get("display_format") or "(none)"
+        key = (df, mapped["format"])
+        crosstab[key] = crosstab.get(key, 0) + 1
         kept.append(mapped)
+
+    blind = sum(1 for r in kept if r.pop("_blind_format_default"))
 
     # Rank = position in the actor's impressions_desc ordering, over kept records only
     # (so drops don't punch holes in the ranking). 1 = highest reach.
@@ -189,6 +260,16 @@ def main():
     with_bucket = sum(1 for r in kept if r["impression_bucket"])
     print(f"  impression buckets present: {with_bucket}/{len(kept)} "
           f"(Meta publishes none for commercial ads -> score.py uses impression_rank)")
+    print("\n  display_format -> format  (what the actor said -> what we recorded):")
+    for (df, fmt), n in sorted(crosstab.items(), key=lambda kv: -kv[1]):
+        print(f"    {df:14} -> {fmt:9} {n:>4}")
+    print("  format distribution:")
+    for fmt in ("video", "image", "carousel"):
+        print(f"    {fmt:14} {sum(1 for r in kept if r['format'] == fmt):>4}")
+    if blind:
+        print(f"    NOTE: {blind} ad(s) had no display_format and no media — "
+              f"defaulted to 'image'")
+
     no_image = sum(1 for r in kept if not r["image_url"])
     no_text = sum(1 for r in kept if not r["ad_text"])
     print(f"  missing image_url: {no_image}   empty ad_text: {no_text}")
@@ -205,7 +286,8 @@ def main():
     for r in kept:
         assert r["ad_id"], "empty ad_id"
         assert date.fromisoformat(r["start_date"]), f"bad start_date {r['start_date']}"
-        assert set(r) == {"ad_id", "start_date", "impression_bucket",
+        assert r["format"] in ("image", "video", "carousel"), f"bad format {r['format']}"
+        assert set(r) == {"ad_id", "start_date", "format", "impression_bucket",
                           "impression_rank", "image_url", "ad_text"}, "schema drift"
     assert len({r["ad_id"] for r in kept}) == len(kept), "duplicate ad_ids"
     print(f"\nAssertions passed: {len(kept)} records, unique ad_ids, all dates valid ISO.")
