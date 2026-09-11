@@ -7,7 +7,8 @@ is deterministic arithmetic on these records, so THIS SCHEMA IS THE CONTRACT
 between the fuzzy vision step and the exact scoring step.
 
 Cost control: this is the only place Part 1 spends LLM tokens besides the scrape.
-Batch the work (~15 ads per request grouping) — see README 'Cost per run'.
+One vision call per ad — 145 calls, not batched: a bad response then validates and
+attributes to a single ad rather than poisoning a group. See README 'Cost per run'.
 """
 from __future__ import annotations
 

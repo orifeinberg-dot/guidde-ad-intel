@@ -43,8 +43,11 @@ Run validate() on every record. Count and report validation failures (bad enum, 
 field). Do not silently drop — report the count and write the valid ones.
 
 ## Cost control
-This is the main token spend in Part 1. Print an estimated cost at the end
-(ads × per-call tokens). One image per ad; no re-tries beyond one.
+This is the main token spend in Part 1. ONE vision call per ad — 145 calls, NOT batched.
+Per-ad is the deliberate choice: one image plus one structured JSON response per call, so a
+malformed or mis-enumerated response validates and attributes to a single ad instead of
+poisoning a group of 15. Batching would cut request count but make failures un-attributable.
+Print an estimated cost at the end (ads × per-call tokens). One image per ad; no re-tries beyond one.
 
 ## Prove it worked — print concisely to stdout
 - ads read, ads successfully extracted, validation failures

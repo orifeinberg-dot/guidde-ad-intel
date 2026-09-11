@@ -84,5 +84,4 @@ committed. Load with `python-dotenv`. Never print or commit a key.
 - Built & frozen: `src/scrape.py`, `src/score.py`
 - **Active stage: `src/extract.py` — spec in `docs/build/02-extract.md`**
 - Not yet started: `src/generate.py` (spec `docs/build/03-generate.md`)
-- Read `docs/build/02-extract.md` first — it is the active spec. It is not in the repo
-  yet; do not start stage 02 until it lands.
+- Read `docs/build/02-extract.md` first — it is the active spec.
