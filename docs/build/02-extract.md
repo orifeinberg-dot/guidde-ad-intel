@@ -37,6 +37,42 @@ body. scrape.py already resolved this — `data/ads_raw.json` has real image_url
 on all 145 records. So read those fields as-is; do not re-parse snapshot. Just trust the
 scraped image_url and ad_text.
 
+## Video ads are read from MULTIPLE FRAMES — important
+`structure_type` distinguishes presenters, screen recordings and kinetic text. Those are
+all judgements about MOTION, and a single still cannot make them: single-frame extraction
+labelled the rank-1 ad (a two-presenter conversational demo) as `other`. So for
+`format == "video"` ONLY, sample 3 frames from `video_url` — at 10% / 50% / 90% of
+duration, not fixed seconds, since these ads run from a few seconds to over a minute —
+and send all 3 in ONE call, telling the model they are start/middle/end frames of a
+single video. Image ads keep the existing single-frame path unchanged.
+
+`video_url` comes from scrape.py (`snapshot.videos[]` / `cards[].video_hd_url`). ffmpeg
+segfaults streaming from the Facebook CDN, so download the file, then decode locally.
+Frames are capped at 768px wide to keep token cost sane. If frame sampling fails for an
+ad, fall back to its single preview frame rather than dropping it.
+
+## Enum: before_after_comparison
+`before_after_comparison` is a creative built on a visual contrast — before/after,
+with/without, or split-screen problem->solution. The contrast IS the structure. It was
+added after inspecting the `other` bucket: ~15 static Scribe ads share this formula, and
+the old enum (built around who is on screen over time) had no slot for it, so they all
+fell through to `other`. A `meme_reaction` grouping was considered and REJECTED — it did
+not survive inspection of the creatives.
+
+## Downstream: dedup.py collapses records to distinct creatives
+extract.py labels every RECORD in ads_raw.json. `src/dedup.py` then runs over
+`data/ads.json` and collapses records sharing identical media bytes into one creative
+(152 -> 94), re-ranking densely over creatives. So the ads.json score.py consumes is
+distinct creatives, not raw records. extract.py itself is unchanged by this — it still
+labels what the scrape gave it.
+
+## Selective re-extraction
+When `data/ads.json` already exists, only re-run records where `format == "video"` (their
+labels came from one still) or `structure_type == "other"` (re-judged against the new
+enum). Carry every other settled record over untouched — they are already correct and
+re-running them is pure spend. Report how many were re-extracted vs carried, how many
+labels changed, and the added cost.
+
 ## format is PROVENANCE, not an LLM field — important
 `format` is carried through from ads_raw.json unchanged; it is NOT in LLM_FIELDS and the
 model is not asked for it. Why: a single still frame cannot reliably tell video from
@@ -66,6 +102,7 @@ Print an estimated cost at the end (ads × per-call tokens). One image per ad; n
 - ads read, ads successfully extracted, validation failures
 - the distribution of structure_type across all ads (how many of each enum)
 - the distribution of format (carried through, so it should match the scrape)
+- how many labels changed, and how many of those were video ads
 - one sample full record, pretty-printed
 - assert every written record has all schema keys + the four provenance fields
 Then write `data/ads.json` and STOP.

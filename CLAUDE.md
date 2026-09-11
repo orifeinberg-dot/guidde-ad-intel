@@ -30,14 +30,25 @@ or production-grade, that urge is wrong for this project. **Files on disk are th
 ## Architecture — each stage is one script that reads a file and writes a file
 ```
 manual qualification (done → Scribe)
-   └─> src/scrape.py    → data/ads_raw.json     [Part 1]
-       └─> src/extract.py → data/ads.json        [Part 1]
-           └─> src/score.py → data/winner.json    [Part 1]
-               └─> src/generate.py → results/brief.md + results/storyboard/   [Part 2]
+   └─> src/scrape.py    → data/ads_raw.json     [Part 1]  (152 records)
+       └─> src/extract.py → data/ads.json        [Part 1]  (labels the records)
+           └─> src/dedup.py → data/ads.json      [Part 1]  (152 recs → 94 creatives)
+               └─> src/score.py → data/winner.json    [Part 1]
+                   └─> src/generate.py → results/brief.md + results/storyboard/   [Part 2]
 ```
 Part 1 (scrape, extract, score) *finds* the best ad. Part 2 (generate) *rebuilds* it.
 The seam between the two parts is `winner.json`. Stages are independent: each can be built
 and tested against a hand-made input file before the stage upstream of it exists.
+
+## `data/ads.json` holds DISTINCT CREATIVES, not raw ad records
+Scribe runs everything as DCO and Meta registers the same creative under multiple
+`ad_archive_id`s — 152 records carry only 94 distinct creatives (verified by SHA-256 of
+the media bytes). `dedup.py` collapses them BEFORE scoring, because duplicates corrupt
+both axes of PatternScore: duplicate registrations inflate cluster *frequency* unevenly,
+and `impression_rank` is dense over records, so one creative holding ranks 4-7 pushes
+every distinct creative below it down by three. After dedup, `impression_rank` is dense
+1..94 over creatives, ordered by each creative's best rank, and `start_date` is the
+earliest instance (its true first-live date, which is what longevity measures).
 
 ## The schema contract — the join between extract and score
 Every per-ad record (in `data/ads.json`) has exactly these keys. `scrape.py` provides the
@@ -64,7 +75,7 @@ the winning cluster. Structural distinctiveness is an outlier flag, not a positi
 guidde-ad-intel/
 ├─ CLAUDE.md              (this file)
 ├─ README.md  .env  .env.example  .gitignore  requirements.txt  architecture.mermaid
-├─ src/       scrape.py ✓  extract.py  score.py ✓  generate.py
+├─ src/       scrape.py ✓  extract.py ✓  dedup.py ✓  score.py ✓  generate.py
 ├─ data/      ads_raw.json  ads.json  winner.json      (gitignored scratch)
 ├─ results/   02_scoreboard.md  03_winner.json  04_brief.md  05_storyboard/   (committed)
 └─ docs/build/  01-scrape.md  02-extract.md  03-generate.md   (per-stage specs)

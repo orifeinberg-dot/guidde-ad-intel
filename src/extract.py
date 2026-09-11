@@ -15,11 +15,14 @@ from __future__ import annotations
 import base64
 import json
 import os
+import subprocess
+import tempfile
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import anthropic
+import imageio_ffmpeg
 import requests
 from dotenv import load_dotenv
 
@@ -48,6 +51,11 @@ PROVENANCE_FIELDS = ("ad_id", "start_date", "format",
 ALLOWED_MEDIA = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 MAX_IMAGE_B64 = 5 * 1024 * 1024      # API limit on a base64 image payload
 
+# Video ads get multiple frames; a single still cannot show motion or turn-taking.
+VIDEO_FRAME_POSITIONS = (0.10, 0.50, 0.90)   # fractions of duration
+VIDEO_FRAMES = len(VIDEO_FRAME_POSITIONS)
+FRAME_WIDTH = 768                             # px cap per frame, keeps tokens sane
+
 
 # ----------------------------------------------------------------------
 # Enums — keep these CLOSED. Clustering in score.py is only stable if
@@ -60,6 +68,7 @@ STRUCTURE_TYPES = [
     "conversational_demo",       # 2+ presenters, product shown through dialogue
     "screen_demo",               # screen/product recording is the focus, no presenter
     "text_animation",            # kinetic text / motion graphics, no presenter
+    "before_after_comparison",   # built on a visual contrast (before/after, split-screen)
     "other",
 ]
 
@@ -106,6 +115,8 @@ Rules for structure_type:
 - 'talking_head_testimonial' for a single presenter speaking to camera
 - 'screen_demo' if a product/screen recording is the focus with no presenter
 - 'text_animation' if it's kinetic text with no presenter
+- 'before_after_comparison' if the creative is built on a visual contrast: before/after,
+  with/without, or a split-screen problem->solution. The contrast IS the structure.
 - otherwise 'other'
 
 Base every field only on what is visibly/audibly present. Do not guess.
@@ -115,6 +126,65 @@ Base every field only on what is visibly/audibly present. Do not guess.
 # ----------------------------------------------------------------------
 # Creative fetch — the image is the evidence; ad_text alone is the fallback.
 # ----------------------------------------------------------------------
+def _video_duration(path: str, exe: str) -> float | None:
+    """Parse 'Duration: HH:MM:SS.ss' out of ffmpeg's banner."""
+    p = subprocess.run([exe, "-hide_banner", "-i", path],
+                       capture_output=True, text=True, timeout=90)
+    for line in p.stderr.splitlines():
+        if "Duration:" in line:
+            hhmmss = line.split("Duration:")[1].split(",")[0].strip()
+            try:
+                h, m, sec = hhmmss.split(":")
+                return int(h) * 3600 + int(m) * 60 + float(sec)
+            except ValueError:
+                return None
+    return None
+
+
+def sample_video_frames(url: str) -> list[tuple[str, str]]:
+    """
+    Return up to VIDEO_FRAMES (base64, media_type) stills sampled across one video.
+
+    Sampled at 10% / 50% / 90% of duration, not fixed seconds: these ads run from a
+    few seconds to over a minute, so fixed offsets would cluster in the first beat
+    and miss the structure entirely. ffmpeg segfaults streaming from the FB CDN, so
+    the file is downloaded first, then decoded locally.
+    """
+    if not url:
+        return []
+    try:
+        resp = requests.get(url, timeout=120, headers={"User-Agent": "Mozilla/5.0"})
+        resp.raise_for_status()
+    except requests.RequestException:
+        return []
+    exe = imageio_ffmpeg.get_ffmpeg_exe()
+    frames: list[tuple[str, str]] = []
+    with tempfile.TemporaryDirectory() as td:
+        mp4 = os.path.join(td, "v.mp4")
+        with open(mp4, "wb") as fh:
+            fh.write(resp.content)
+        dur = _video_duration(mp4, exe)
+        if not dur or dur <= 0:
+            return []
+        for i, pct in enumerate(VIDEO_FRAME_POSITIONS):
+            out = os.path.join(td, f"f{i}.jpg")
+            try:
+                subprocess.run(
+                    [exe, "-hide_banner", "-loglevel", "error", "-ss", f"{dur * pct:.2f}",
+                     "-i", mp4, "-frames:v", "1", "-vf", f"scale='min({FRAME_WIDTH},iw)':-2",
+                     "-q:v", "4", "-y", out],
+                    capture_output=True, timeout=90, check=False)
+            except subprocess.TimeoutExpired:
+                continue
+            if not os.path.exists(out) or not os.path.getsize(out):
+                continue
+            data = open(out, "rb").read()
+            mt = sniff_media_type(data)
+            if mt in ALLOWED_MEDIA:
+                frames.append((base64.standard_b64encode(data).decode("utf-8"), mt))
+    return frames
+
+
 def sniff_media_type(data: bytes) -> str | None:
     """
     Identify the image from its magic bytes.
@@ -167,13 +237,19 @@ def _parse_json(text: str) -> dict:
     return json.loads(t[start:end + 1])
 
 
-def modality_note(fmt: str | None) -> str:
+def modality_note(fmt: str | None, n_frames: int = 1) -> str:
     """
     State the real modality in-context. structure_type distinguishes presenters,
     screen recordings and kinetic text — all motion judgements. Without this the
     model is reading a still frame and inferring the wrong thing.
     """
     if fmt == "video":
+        if n_frames > 1:
+            return (f"This ad is a VIDEO. The {n_frames} images above are frames sampled "
+                    f"from the START, MIDDLE and END of that one video, in order — they "
+                    f"are not separate ads. Judge structure_type from how the video "
+                    f"develops across them (who appears, whether presenters talk to each "
+                    f"other, whether a screen is being demonstrated).")
         return ("This ad is a VIDEO. The image above is its preview frame, not the "
                 "whole ad. Judge structure_type as the structure of the video.")
     if fmt == "carousel":
@@ -188,18 +264,23 @@ def extract_one(media: dict, client: anthropic.Anthropic) -> tuple[dict, dict]:
     stats carries per-call usage + whether the creative was available, so the
     runner can report cost and image-failure counts without a global.
     """
-    image = fetch_image(media.get("image_url", ""))
-    content = []
-    if image is not None:
-        b64, media_type = image
-        content.append({"type": "image", "source": {
-            "type": "base64", "media_type": media_type, "data": b64}})
+    fmt = media.get("format")
+    images: list[tuple[str, str]] = []
+    if fmt == "video":
+        images = sample_video_frames(media.get("video_url", ""))
+    if not images:                       # image ads, and videos whose frames failed
+        one = fetch_image(media.get("image_url", ""))
+        if one is not None:
+            images = [one]
+
+    content = [{"type": "image", "source": {
+        "type": "base64", "media_type": mt, "data": b64}} for b64, mt in images]
     content.append({"type": "text",
                     "text": EXTRACTION_PROMPT
-                            + "\n\n" + modality_note(media.get("format"))
+                            + "\n\n" + modality_note(fmt, len(images))
                             + "\n\nAd copy:\n" + (media.get("ad_text") or "")})
 
-    stats = {"in": 0, "out": 0, "image_ok": image is not None,
+    stats = {"in": 0, "out": 0, "image_ok": bool(images), "frames": len(images),
              "error": None, "truncated": False}
     parsed = {}
     # One attempt, then exactly one retry — the spec allows no more.
@@ -264,16 +345,43 @@ def validate(record):
 # ----------------------------------------------------------------------
 # Runner
 # ----------------------------------------------------------------------
+def needs_reextraction(rec: dict) -> bool:
+    """
+    Which already-settled records to re-run when data/ads.json exists.
+
+    Video ads: their structure_type came from one still and is unreliable — that is
+    how the rank-1 ad was labelled 'other' instead of conversational_demo.
+    'other' ads: re-judged now that before_after_comparison exists in the enum.
+    Everything else is already correct and is carried over untouched, unspent.
+    """
+    return rec.get("format") == "video" or rec.get("structure_type") == "other"
+
+
 def main():
     load_dotenv()
     os.environ["ANTHROPIC_API_KEY"]          # fail loudly now, not 145 calls in
     ads = json.loads(IN_PATH.read_text())
-    print(f"\nExtracting {len(ads)} ads with {MODEL} (effort={EFFORT}, "
-          f"1 vision call per ad)...")
 
-    records, stats = extract_batch(ads)
+    prior = {}
+    if OUT_PATH.exists():
+        prior = {r["ad_id"]: r for r in json.loads(OUT_PATH.read_text())}
+    def _redo(a: dict) -> bool:
+        settled = prior.get(a["ad_id"])
+        return settled is None or needs_reextraction(settled)
 
-    valid, failures = [], []
+    targets = [a for a in ads if _redo(a)]
+    carried = [prior[a["ad_id"]] for a in ads if not _redo(a)]
+
+    n_vid = sum(1 for a in targets if a["format"] == "video")
+    print(f"\nExtracting {len(targets)} ads with {MODEL} (effort={EFFORT}, "
+          f"1 call per ad; {n_vid} video ads at {VIDEO_FRAMES} frames each)")
+    if carried:
+        print(f"  carrying over {len(carried)} settled records untouched (no spend)")
+
+    before = {r["ad_id"]: r.get("structure_type") for r in prior.values()}
+    records, stats = extract_batch(targets)
+
+    valid, failures = list(carried), []
     for rec, st in zip(records, stats):
         errs = validate(rec)
         if errs:
@@ -281,13 +389,32 @@ def main():
         else:
             valid.append(rec)
 
+    order = {a["ad_id"]: i for i, a in enumerate(ads)}
+    valid.sort(key=lambda r: order[r["ad_id"]])
+
+    changed = [(r["ad_id"], before[r["ad_id"]], r["structure_type"])
+               for r in valid
+               if r["ad_id"] in before and before[r["ad_id"]] != r["structure_type"]]
+    vid_changed = sum(1 for r in valid if r["format"] == "video"
+                      and r["ad_id"] in before
+                      and before[r["ad_id"]] != r["structure_type"])
+
     no_image = sum(1 for s in stats if not s["image_ok"])
     tok_in = sum(s["in"] for s in stats)
     tok_out = sum(s["out"] for s in stats)
     cost = tok_in / 1e6 * PRICE_IN_PER_MTOK + tok_out / 1e6 * PRICE_OUT_PER_MTOK
 
+    if before:
+        print(f"\n  labels changed      : {len(changed)}  "
+              f"({vid_changed} of them video ads)")
+        rank1 = next((r for r in valid if r["ad_id"] == "1035536132425989"), None)
+        if rank1:
+            print(f"  rank-1 ad 1035536132425989 -> structure_type="
+                  f"{rank1['structure_type']!r} (was {before.get(rank1['ad_id'])!r})")
+
     print(f"\n  ads read            : {len(ads)}")
-    print(f"  extracted + valid   : {len(valid)}")
+    print(f"  re-extracted        : {len(targets)}   carried over: {len(carried)}")
+    print(f"  total valid         : {len(valid)}")
     print(f"  validation failures : {len(failures)}")
     print(f"  creative unavailable: {no_image}  (extracted from ad_text alone)")
 
@@ -315,7 +442,7 @@ def main():
     print("\n  Sample record:")
     print(json.dumps(valid[0], indent=2))
 
-    print(f"\n  Cost: {tok_in:,} in + {tok_out:,} out tokens "
+    print(f"\n  Added cost this run: {tok_in:,} in + {tok_out:,} out tokens "
           f"@ ${PRICE_IN_PER_MTOK}/${PRICE_OUT_PER_MTOK} per MTok = ${cost:.2f}")
 
     expected = set(AD_SCHEMA) | set(PROVENANCE_FIELDS)

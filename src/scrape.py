@@ -172,6 +172,26 @@ def pick_image_url(rec: dict, fmt: str | None = None) -> str:
     return ""
 
 
+def pick_video_url(rec: dict) -> str:
+    """
+    Source video for video ads — "" for everything else.
+
+    extract.py samples frames from this so structure_type is judged from motion.
+    A single preview frame cannot tell a two-presenter conversational demo from a
+    talking head, which is exactly how the rank-1 ad was mislabelled.
+    """
+    snap = rec.get("snapshot") or {}
+    for pool in (snap.get("videos"), snap.get("cards"), snap.get("extra_videos")):
+        for entry in pool or []:
+            if not isinstance(entry, dict):
+                continue
+            for f in ("video_hd_url", "video_sd_url"):
+                url = _clean(entry.get(f))
+                if url:
+                    return url
+    return ""
+
+
 def pick_ad_text(rec: dict) -> str:
     """Primary copy. DCO ads leave snapshot.body as a template, so fall through to cards."""
     snap = rec.get("snapshot") or {}
@@ -201,6 +221,7 @@ def to_record(rec: dict) -> dict | None:
         "impression_bucket": pick_impression_bucket(rec),
         "impression_rank": None,          # assigned after filtering, from actor order
         "image_url": pick_image_url(rec, fmt),
+        "video_url": pick_video_url(rec) if fmt == "video" else "",
         "ad_text": pick_ad_text(rec),
         "_blind_format_default": blind,   # proof-only, stripped before writing
     }
@@ -270,6 +291,10 @@ def main():
         print(f"    NOTE: {blind} ad(s) had no display_format and no media — "
               f"defaulted to 'image'")
 
+    n_vid = sum(1 for r in kept if r["format"] == "video")
+    with_vid = sum(1 for r in kept if r["video_url"])
+    print(f"  video_url resolved: {with_vid}/{n_vid} video ads")
+
     no_image = sum(1 for r in kept if not r["image_url"])
     no_text = sum(1 for r in kept if not r["ad_text"])
     print(f"  missing image_url: {no_image}   empty ad_text: {no_text}")
@@ -288,7 +313,10 @@ def main():
         assert date.fromisoformat(r["start_date"]), f"bad start_date {r['start_date']}"
         assert r["format"] in ("image", "video", "carousel"), f"bad format {r['format']}"
         assert set(r) == {"ad_id", "start_date", "format", "impression_bucket",
-                          "impression_rank", "image_url", "ad_text"}, "schema drift"
+                          "impression_rank", "image_url", "video_url",
+                          "ad_text"}, "schema drift"
+        if r["format"] == "video":
+            assert r["video_url"], f"video ad {r['ad_id']} has no video_url"
     assert len({r["ad_id"] for r in kept}) == len(kept), "duplicate ad_ids"
     print(f"\nAssertions passed: {len(kept)} records, unique ad_ids, all dates valid ISO.")
 
