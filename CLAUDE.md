@@ -81,6 +81,6 @@ committed. Load with `python-dotenv`. Never print or commit a key.
 4. STOP. Tell the human what to review and suggest a one-line commit message. Do not run git.
 
 ## Current status
-- Built & frozen: `src/extract.py`, `src/score.py`
-- **Active stage: `src/scrape.py` — spec in `docs/build/01-scrape.md`**
-- Not yet started: `src/generate.py` (spec `docs/build/02-generate.md`)
+- Built & frozen: `src/scrape.py`, `src/score.py`
+- **Active stage: `src/extract.py` — spec in `docs/build/02-extract.md`**
+- Not yet started: `src/generate.py` (spec `docs/build/03-generate.md`)
