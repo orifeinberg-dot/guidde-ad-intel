@@ -14,7 +14,7 @@ all active commercial ads.
 
 ## Config — constants at the top of the file
 - `COMPETITOR = "Scribe"`
-- `AD_LIBRARY_URL = "<<PASTE THE SCRIBE AD LIBRARY URL HERE>>"`  ← the human pastes this
+- `AD_LIBRARY_URL = "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&is_targeted_country=false&media_type=all&search_type=page&sort_data[direction]=desc&sort_data[mode]=total_impressions&view_all_page_id=110376044484488"`  ← the human pastes this
 - `COUNTRY = "US"`
 - `ACTIVE_ONLY = True`
 - `MAX_RESULTS = 200`  (Scribe has ~150 active ads; cap to bound Apify cost)
@@ -27,6 +27,11 @@ all active commercial ads.
 - `impression_rank`: int | null — 1 = highest, if a sort order is derivable; else null
 - `image_url`: str — primary creative image; for video ads, the thumbnail/preview frame
 - `ad_text`: str — primary ad copy; `""` if none
+
+**Impression rank:** `AD_LIBRARY_URL` sorts by impressions descending, so set
+`impression_rank` = the 1-based position of each ad in the actor's returned order
+(first ad = 1). Leave `impression_bucket` as null unless the actor also returns an
+explicit impressions range.
 
 ## Defensive mapping — important
 The actor's real output field names may differ from the above. FIRST fetch a few results,

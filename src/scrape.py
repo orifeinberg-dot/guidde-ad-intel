@@ -24,13 +24,17 @@ from dotenv import load_dotenv
 # ----------------------------------------------------------------------
 COMPETITOR = "Scribe"
 
-# Scribe's Ad Library page view. page_id verified against live actor output:
-# snapshot.page_profile_uri == "https://www.facebook.com/ScribeHow/".
+# Scribe's Ad Library page view, verbatim from docs/build/01-scrape.md. page_id confirmed
+# against live actor output: snapshot.page_profile_uri == "https://www.facebook.com/ScribeHow/".
+# The sort_data params state impressions-desc in the URL; scrapePageAds.sortBy below states it
+# again as actor input. Belt-and-braces on purpose — the actor builds its own query from a page
+# URL, so the input field is what actually drives the sort.
 AD_LIBRARY_URL = (
     "https://www.facebook.com/ads/library/"
     "?active_status=active&ad_type=all&country=US"
-    "&is_targeted_country=false&media_type=all"
-    "&search_type=page&view_all_page_id=110376044484488"
+    "&is_targeted_country=false&media_type=all&search_type=page"
+    "&sort_data[direction]=desc&sort_data[mode]=total_impressions"
+    "&view_all_page_id=110376044484488"
 )
 
 COUNTRY = "US"
