@@ -117,6 +117,41 @@ frame-only extraction missed). It's the raw material for Part 2.
 
 ---
 
+## Architecture
+
+```mermaid
+flowchart TD
+    A[Config<br/>Scribe, US, active, impressions-desc] --> B
+
+    subgraph P1[Part 1 — Find the winning ad]
+        B[scrape.py<br/>Apify FB Ad Library actor<br/>derive format from display_format] -->|ads_raw.json| C[extract.py<br/>claude-sonnet-5 vision<br/>3 frames video / 1 image]
+        C -->|ads_extracted.json| D[dedup.py<br/>SHA-256 of media bytes<br/>152 to 94 distinct creatives]
+        D -->|ads.json| E[score.py<br/>cluster, freq x perf, video constraint<br/>deterministic, no LLM]
+    end
+
+    E -->|winner.json — the seam| G
+
+    subgraph P2[Part 2 — Rebuild for Guidde]
+        G[generate.py<br/>brief + 10-shot storyboard] --> H[gpt-image-2<br/>9 frames, portrait]
+        G --> I[end card<br/>real Guidde SVG composite]
+        H --> J[render<br/>storyboard.html + PDF]
+        I --> J
+    end
+
+    E -.->|02_scoreboard.md, 03_winner.json| K
+    G -.->|04_brief.md| K
+    J --> K[(results/ — committed deliverable)]
+
+    APIFY{{Apify}} -.-> B
+    ANT{{Anthropic}} -.-> C
+    ANT -.-> G
+    OAI{{OpenAI}} -.-> H
+
+    TD[teardown<br/>faster-whisper transcript + shots<br/>manual prep, feeds the brief] -.-> G
+```
+
+---
+
 ## Running it from a clean machine
 
 ```bash
@@ -182,8 +217,8 @@ rebuild:
   a feature tour.
 - **The edit accelerates into the demo.** Overall pacing is slow (~1 cut / 4.8s), but the two
   demo shots are the fastest cuts, bracketed by slow takes.
-- **A status payoff, not a benefit claim.** The ad lands on the speaker being too documented to
-  be replaceable — never "saves you X hours."
+- **A status payoff, not a benefit claim.** The ad lands on career-visibility — being seen as the 
+  one who knows how things work — never "saves you X hours." The Guidde rebuild carries this through: its message and CTA both turn on *proof* ("turn what you know into proof"), a credit-for-your-knowledge claim rather than an efficiency one.
 
 The Guidde rebuild (`results/04_brief.md` + storyboard) mirrors that structure faithfully:
 same earned-reveal arc, same accelerating edit, same status-leverage payoff — with Scribe's
