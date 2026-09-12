@@ -27,7 +27,12 @@ from pathlib import Path
 
 import requests
 
-ADS_PATH = Path("data/ads.json")
+# Input and output are DELIBERATELY different files. dedup.py resolves label
+# conflicts by majority vote across a creative's duplicate instances, so it needs the
+# per-instance labels. If it ever read its own output, a second run would see one
+# already-merged record per creative and that evidence would be gone for good.
+IN_PATH = Path("data/ads_extracted.json")    # 152 labelled records, from extract.py
+ADS_PATH = Path("data/ads.json")             # 94 distinct creatives, for score.py
 RAW_PATH = Path("data/ads_raw.json")
 HASH_CACHE = Path("data/media_hashes.json")   # media URLs expire; don't re-fetch
 
@@ -123,7 +128,7 @@ def merge_group(instances: list[dict]) -> tuple[dict, list[str] | None]:
 
 
 def main():
-    ads = json.loads(ADS_PATH.read_text())
+    ads = json.loads(IN_PATH.read_text())
     raw = {r["ad_id"]: r for r in json.loads(RAW_PATH.read_text())}
     hashes = load_hashes(ads, raw)
 
@@ -139,8 +144,7 @@ def main():
     print(f"\n  records in       : {len(ads)}")
     print(f"  distinct creatives: {len(groups)}")
     if len(groups) == len(ads):
-        print("  Already deduplicated — nothing to do, file left untouched.")
-        return
+        print("  Input has no duplicate creatives — writing it through unchanged.")
 
     merged, conflicts = [], []
     for key, insts in groups.items():

@@ -54,9 +54,18 @@ CLUSTER_KEY_FIELDS = ("format", "structure_type")
 # demoted from a positive signal to an outlier flag.)
 OUTLIER_MAX_SIZE = 2
 
-# Per-execution performance blend (within a cluster).
-W_IPD = 0.5
-W_LONGEVITY = 0.5
+# SELECTION CONSTRAINT (not scoring). Part 2 has to produce a shot-by-shot storyboard,
+# which is a video artifact: you cannot storyboard a static image. So the WINNER must come
+# from a video cluster. This filters WHO CAN WIN — it does not touch how anything is
+# scored. The full ranked table still reports every cluster, static included, so the
+# finding that static patterns dominate Scribe's mix stays visible rather than hidden by
+# the constraint. The unconstrained winner is computed and reported alongside.
+WINNER_FORMATS = ("video",)
+
+# Per-execution performance blend (within a cluster). TWO INDEPENDENT components —
+# deliberately NOT divided into each other (see the unit-bug note in reach_standings).
+W_REACH = 0.5        # how much reach the creative has achieved (a STANDING)
+W_LONGEVITY = 0.5    # how long it has survived (evidence of proven-ness)
 
 
 # ----------------------------------------------------------------------
@@ -84,22 +93,38 @@ class Ad:
 # ----------------------------------------------------------------------
 # Signals
 # ----------------------------------------------------------------------
-def exposure(ad: Ad, n_ads: int) -> float:
+def reach_standings(ads: list[Ad]) -> dict[str, float]:
     """
-    Reach proxy feeding impressions-per-day.
-    Primary: impression-bucket midpoint (real Meta data).
-    Fallback: if only sort ORDER is on the card (no bucket values), convert rank
-    to a pseudo-exposure. Documented as a fallback in the README.
+    Relative reach STANDING per ad, in [0,1]. 1 = highest reach in the set.
+
+    UNIT BUG FIXED 2026-09-12 (see CLAUDE.md 'Corrections'). This was previously
+    `exposure(ad) / days_running`, i.e. an impressions-per-day RATE. That is a unit
+    error: for the 83 of 94 creatives with no usable impression bucket, the reach
+    signal is Meta's impressions-descending SORT ORDER — a CURRENT STANDING, not a
+    cumulative lifetime impression count. Dividing a standing by age produces a
+    quantity with no meaning, and empirically a 6.1x recency bias (median ipd 0.128
+    for creatives <=7 days old vs 0.021 for those >=30 days). It also INVERTED the
+    intent of longevity: age became a divisor/penalty when longevity is supposed to
+    be evidence that a pattern is proven.
+
+    The fix: never divide by age. Reach is a standing; longevity is a separate,
+    positive component of perf. Both reach sources are mapped to a within-set [0,1]
+    standing so neither dominates by raw magnitude — a bucket midpoint (30,000) and
+    a rank standing (0.63) must never share one min-max scale.
     """
-    if ad.impression_bucket in BUCKET_MIDPOINTS:
-        return BUCKET_MIDPOINTS[ad.impression_bucket]
-    if ad.impression_rank is not None:
-        return (n_ads - ad.impression_rank + 1) / n_ads  # rank 1 -> highest
-    raise ValueError(f"Ad {ad.ad_id}: no impression_bucket or impression_rank")
-
-
-def impressions_per_day(ad: Ad, n_ads: int) -> float:
-    return exposure(ad, n_ads) / ad.days_running
+    n = len(ads)
+    tiers = sorted({BUCKET_MIDPOINTS[a.impression_bucket] for a in ads
+                    if a.impression_bucket in BUCKET_MIDPOINTS})
+    out: dict[str, float] = {}
+    for a in ads:
+        if a.impression_bucket in BUCKET_MIDPOINTS:
+            # real cumulative data: position among the bucket tiers present in the set
+            out[a.ad_id] = (tiers.index(BUCKET_MIDPOINTS[a.impression_bucket]) + 1) / len(tiers)
+        elif a.impression_rank is not None:
+            out[a.ad_id] = (n - a.impression_rank + 1) / n   # rank 1 -> 1.0
+        else:
+            raise ValueError(f"Ad {a.ad_id}: no impression_bucket or impression_rank")
+    return out
 
 
 def minmax(values: list[float]) -> list[float]:
@@ -128,16 +153,18 @@ def load_ads(path: Path) -> list[Ad]:
     return ads
 
 
-def score(ads: list[Ad]) -> dict:
+def score(ads: list[Ad], w_reach: float = W_REACH,
+          w_longevity: float = W_LONGEVITY) -> dict:
     n = len(ads)
 
-    # 1) Per-ad signals, normalized across the whole set.
-    ipd = [impressions_per_day(a, n) for a in ads]
-    longevity = [float(a.days_running) for a in ads]
-    ipd_n, lon_n = minmax(ipd), minmax(longevity)
-    perf_per_ad = {a.ad_id: W_IPD * ipd_n[i] + W_LONGEVITY * lon_n[i]
+    # 1) Per-ad signals, normalized across the whole set. Reach and longevity are
+    #    independent axes of perf; neither is divided into the other.
+    reach = reach_standings(ads)
+    reach_n = minmax([reach[a.ad_id] for a in ads])
+    lon_n = minmax([float(a.days_running) for a in ads])
+    perf_per_ad = {a.ad_id: w_reach * reach_n[i] + w_longevity * lon_n[i]
                    for i, a in enumerate(ads)}
-    ipd_by_id = {a.ad_id: ipd[i] for i, a in enumerate(ads)}
+    reach_by_id = {a.ad_id: reach[a.ad_id] for a in ads}
 
     # 2) Cluster on the common-denominator key.
     clusters: dict[tuple, list[Ad]] = defaultdict(list)
@@ -165,10 +192,32 @@ def score(ads: list[Ad]) -> dict:
             for i, k in enumerate(keys)]
     rows.sort(key=lambda r: r["pattern_score"], reverse=True)
 
-    # 6) Winner: top impressions-per-day in the winning cluster (longevity tiebreak).
+    # 6) Winner: best-performing execution inside the winning cluster — same blend of
+    #    reach standing + longevity, with reach then age as tiebreaks.
+    def best_in(key):
+        return max(proven[key], key=lambda a: (perf_per_ad[a.ad_id],
+                                               reach_by_id[a.ad_id], a.days_running))
+
     winning_key = rows[0]["cluster"]
-    winner = max(proven[winning_key],
-                 key=lambda a: (ipd_by_id[a.ad_id], a.days_running))
+    winner = best_in(winning_key)
+
+    # 6b) Video-constrained selection (see WINNER_FORMATS). Applied AFTER scoring, over
+    #     the same proven clusters and the same PatternScore ordering.
+    #     TIEBREAK — necessary, not cosmetic: both video clusters currently score exactly
+    #     0.000, because min-max sends whichever cluster holds an axis minimum to zero and
+    #     the product annihilates it (talking_head holds min perf, text_animation min freq).
+    #     Ordering by PatternScore alone would therefore pick by dict insertion order. Ties
+    #     break on cluster size n, which is the tiebreak most faithful to the stated
+    #     definition of best: "the most-repeated, durability-proven formula".
+    fmt_i = CLUSTER_KEY_FIELDS.index("format")
+    vid_rows = [r for r in rows if r["cluster"][fmt_i] in WINNER_FORMATS]
+    constrained = None
+    if vid_rows:
+        vid_rows = sorted(vid_rows, key=lambda r: (r["pattern_score"], r["n"]), reverse=True)
+        ckey = vid_rows[0]["cluster"]
+        constrained = {"cluster": ckey, "winner": best_in(ckey),
+                       "rows": vid_rows,
+                       "tied": len({r["pattern_score"] for r in vid_rows}) < len(vid_rows)}
 
     return {
         "winner": winner,
@@ -176,7 +225,9 @@ def score(ads: list[Ad]) -> dict:
         "ranked_clusters": rows,
         "outliers": [{"cluster": k, "n": len(v), "ad_ids": [a.ad_id for a in v]}
                      for k, v in outliers.items()],
-        "ipd_by_id": ipd_by_id,
+        "reach_by_id": reach_by_id,
+        "perf_by_id": perf_per_ad,
+        "constrained": constrained,
     }
 
 
@@ -185,7 +236,7 @@ def _key_str(k: tuple) -> str:
 
 
 def main():
-    ads = load_ads(Path("ads.json"))
+    ads = load_ads(Path("data/ads.json"))
     result = score(ads)
 
     print(f"\nAds scored: {len(ads)}")
@@ -200,23 +251,62 @@ def main():
             print(f"  {_key_str(o['cluster']):40}  n={o['n']}  {o['ad_ids']}")
 
     w = result["winner"]
-    print(f"\nWINNER: {w.ad_id}")
+    print(f"\nUNCONSTRAINED WINNER (top PatternScore over ALL proven clusters): {w.ad_id}")
     print(f"  pattern : {_key_str(result['winning_cluster'])}")
     print(f"  started : {w.start_date}  ({w.days_running} days running)")
-    print(f"  imp/day : {result['ipd_by_id'][w.ad_id]:.1f}")
+    print(f"  reach   : {result['reach_by_id'][w.ad_id]:.3f} standing (1.0 = highest in set)")
+    print(f"  perf    : {result['perf_by_id'][w.ad_id]:.3f}  "
+          f"(= {W_REACH} x reach + {W_LONGEVITY} x longevity)")
+
+    c = result["constrained"]
+    if not c:
+        raise SystemExit(f"No proven cluster with format in {WINNER_FORMATS} — "
+                         f"cannot select a storyboardable winner.")
+    cw = c["winner"]
+    print(f"\nVIDEO-CONSTRAINED WINNER (format in {WINNER_FORMATS}; "
+          f"Part 2 needs a storyboard): {cw.ad_id}")
+    print(f"  pattern : {_key_str(c['cluster'])}")
+    print(f"  started : {cw.start_date}  ({cw.days_running} days running)")
+    print(f"  reach   : {result['reach_by_id'][cw.ad_id]:.3f} standing")
+    print(f"  perf    : {result['perf_by_id'][cw.ad_id]:.3f}")
+    print("  video-eligible proven clusters, by PatternScore then n:")
+    for r in c["rows"]:
+        print(f"    {_key_str(r['cluster']):40} n={r['n']:>3}  score={r['pattern_score']:.3f}")
+    if c["tied"]:
+        print("    NOTE: PatternScores tie here — resolved on cluster size n "
+              "(most-repeated proven formula).")
 
     # Clean hand-off artifact: the winner + ranking for the README and Part 2.
-    Path("winner.json").write_text(json.dumps({
-        "winner_ad_id": w.ad_id,
-        "winning_pattern": _key_str(result["winning_cluster"]),
-        "start_date": w.start_date.isoformat(),
-        "days_running": w.days_running,
-        "impressions_per_day": round(result["ipd_by_id"][w.ad_id], 1),
-        "winner_record": w.raw,   # hook/angle/cta etc. for the brief
+    Path("data/winner.json").write_text(json.dumps({
+        "winner_ad_id": cw.ad_id,
+        "winning_pattern": _key_str(c["cluster"]),
+        "selection_constraint": {
+            "winner_formats": list(WINNER_FORMATS),
+            "why": "Part 2 produces a shot-by-shot storyboard, which is a video artifact.",
+            "patternscore_tie_broken_on_cluster_size": c["tied"],
+            "unconstrained_winner_ad_id": w.ad_id,
+            "unconstrained_pattern": _key_str(result["winning_cluster"]),
+        },
+        "start_date": cw.start_date.isoformat(),
+        "days_running": cw.days_running,
+        "reach_standing": round(result["reach_by_id"][cw.ad_id], 4),
+        "perf": round(result["perf_by_id"][cw.ad_id], 4),
+        "winner_record": cw.raw,   # hook/angle/cta etc. for the brief
         "ranked_clusters": [{**r, "cluster": _key_str(r["cluster"])}
                             for r in result["ranked_clusters"]],
     }, indent=2))
-    print("\nWrote winner.json")
+    print("\nWrote data/winner.json")
+
+    print("\nSensitivity — does the winning cluster survive a different perf blend?")
+    print(f"  {'weights (reach/longevity)':30} {'winning cluster':36} winner")
+    for wr, wl, label in ((1.0, 0.0, "reach only"), (0.7, 0.3, "reach-weighted"),
+                          (0.5, 0.5, "blended (default)"), (0.3, 0.7, "longevity-weighted"),
+                          (0.0, 1.0, "longevity only")):
+        alt = score(ads, w_reach=wr, w_longevity=wl)
+        same = "" if alt["winning_cluster"] == result["winning_cluster"] else "   <- FLIPS"
+        mark = "" if alt["winner"].ad_id == w.ad_id else "  (different creative)"
+        print(f"  {label + f' {wr}/{wl}':30} {_key_str(alt['winning_cluster']):36} "
+              f"{alt['winner'].ad_id}{mark}{same}")
 
 
 if __name__ == "__main__":

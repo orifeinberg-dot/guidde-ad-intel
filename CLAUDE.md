@@ -30,11 +30,18 @@ or production-grade, that urge is wrong for this project. **Files on disk are th
 ## Architecture — each stage is one script that reads a file and writes a file
 ```
 manual qualification (done → Scribe)
-   └─> src/scrape.py    → data/ads_raw.json     [Part 1]  (152 records)
-       └─> src/extract.py → data/ads.json        [Part 1]  (labels the records)
-           └─> src/dedup.py → data/ads.json      [Part 1]  (152 recs → 94 creatives)
+   └─> src/scrape.py    → data/ads_raw.json          [Part 1]  (152 records)
+       └─> src/extract.py → data/ads_extracted.json   [Part 1]  (labels those records)
+           └─> src/dedup.py → data/ads.json           [Part 1]  (152 recs → 94 creatives)
                └─> src/score.py → data/winner.json    [Part 1]
                    └─> src/generate.py → results/brief.md + results/storyboard/   [Part 2]
+
+RUN ORDER IS FIXED: scrape → extract → dedup → score. Each stage reads a DIFFERENT file
+than it writes, on purpose. dedup.py resolves label conflicts by majority vote across a
+creative's duplicate instances, so it needs extract.py's per-instance labels
+(`ads_extracted.json`). If it read its own output, a second run would see one merged
+record per creative and that evidence would be destroyed. Never point dedup.py at
+`ads.json`. Full rationale and merge rules: `docs/build/02b-dedup.md`.
 ```
 Part 1 (scrape, extract, score) *finds* the best ad. Part 2 (generate) *rebuilds* it.
 The seam between the two parts is `winner.json`. Stages are independent: each can be built
@@ -66,9 +73,49 @@ the clustering key — it is the variable the competitor rotates, not the patter
 Meta exposes no spend/performance for commercial ads, so "best" is inferred. `score.py` clusters
 ads by structural pattern (`format` + `structure_type`), then scores each cluster as
 **PatternScore = norm(frequency) × norm(performance)** — a product, not a sum, so a pattern wins
-only if it is both heavily repeated AND its instances survive/scale. Performance = longevity +
-impressions-per-day (age-normalized). The winning ad is the top impressions-per-day exemplar in
-the winning cluster. Structural distinctiveness is an outlier flag, not a positive signal.
+only if it is both heavily repeated AND its instances survive/scale. Performance blends two
+INDEPENDENT components: **reach standing** (relative reach, in [0,1]) and **longevity** (days
+running). The winning ad is the top-perf exemplar in the winning cluster. Structural
+distinctiveness is an outlier flag, not a positive signal.
+
+## Winner selection is constrained to VIDEO — 2026-09-12
+Part 2 must produce a shot-by-shot storyboard, which is a video artifact: a static image
+cannot be storyboarded. So `WINNER_FORMATS = ("video",)` restricts WHO CAN WIN. This is a
+SELECTION constraint applied after scoring — clustering, freq, perf, PatternScore, the
+product form and `OUTLIER_MAX_SIZE` are untouched, and the ranked table still prints every
+cluster so the static-dominance finding stays visible. `score.py` reports BOTH winners: the
+unconstrained one (`image/text_animation`, 3252904458431344) and the video-constrained one
+(`video/talking_head_testimonial`, 1155616497059211, which is what winner.json carries).
+
+A tiebreak was REQUIRED here, and it is load-bearing: both video clusters score PatternScore
+exactly 0.000, because min-max sends whichever cluster holds an axis minimum to zero and the
+product annihilates it — `video/talking_head_testimonial` holds the minimum perf,
+`video/text_animation` the minimum freq. Ordering by PatternScore alone would pick by dict
+insertion order. Ties break on cluster size `n`, the tiebreak most faithful to the stated
+definition of best: the most-repeated, durability-proven formula (n=30 vs n=3).
+
+## Corrections — score.py unfrozen twice, 2026-09-12
+Once for the unit bug below, once for the video selection constraint above. Both are
+recorded here; neither re-litigates the definition of best.
+
+### Unfreeze 1 — a unit bug
+`score.py` was frozen. It was unfrozen for ONE correctness fix, not to re-litigate "best":
+freq × perf, the product form, clustering, and `OUTLIER_MAX_SIZE` are all unchanged.
+
+**The bug.** `impressions_per_day = exposure / days_running` assumed `exposure` was a
+cumulative lifetime impression count. For the 83 of 94 creatives with no usable impression
+bucket, the reach signal is Meta's impressions-descending SORT ORDER — a CURRENT STANDING,
+not a cumulative total. Dividing a standing by age is a unit error: the result has no
+meaning. Measured effect: a 6.1x recency bias (median ipd 0.128 for creatives <=7 days old
+vs 0.021 for >=30 days). Every one of the top 8 by ipd was 1-3 days old. Worse, it INVERTED
+the model's own intent — longevity is meant to be evidence a pattern is proven, but age had
+become a divisor, i.e. a penalty. It decided the winner: the pre-fix winner was rank 36 of
+94 and three days old, from the cluster with the youngest age profile.
+
+**The fix.** Never divide reach by age. Reach is a standing in [0,1]; longevity is a
+separate, positive component of perf. Both reach sources map to a within-set [0,1] standing,
+so a bucket midpoint (30,000) and a rank standing (0.63) never share one min-max scale.
+After the fix, creatives >=30 days old score 4.7x the <=7 day ones — age reads as evidence.
 
 ## Repo layout
 ```
@@ -78,7 +125,8 @@ guidde-ad-intel/
 ├─ src/       scrape.py ✓  extract.py ✓  dedup.py ✓  score.py ✓  generate.py
 ├─ data/      ads_raw.json  ads.json  winner.json      (gitignored scratch)
 ├─ results/   02_scoreboard.md  03_winner.json  04_brief.md  05_storyboard/   (committed)
-└─ docs/build/  01-scrape.md  02-extract.md  03-generate.md   (per-stage specs)
+└─ docs/build/  01-scrape.md  02-extract.md  02b-dedup.md  03-score.md
+                04-generate.md                                  (per-stage specs)
 ```
 
 ## Secrets
@@ -92,7 +140,11 @@ committed. Load with `python-dotenv`. Never print or commit a key.
 4. STOP. Tell the human what to review and suggest a one-line commit message. Do not run git.
 
 ## Current status
-- Built & frozen: `src/scrape.py`, `src/score.py`
-- **Active stage: `src/extract.py` — spec in `docs/build/02-extract.md`**
-- Not yet started: `src/generate.py` (spec `docs/build/03-generate.md`)
-- Read `docs/build/02-extract.md` first — it is the active spec.
+- Part 1 COMPLETE: `src/scrape.py`, `src/extract.py`, `src/dedup.py`, `src/score.py`
+  — all built, proven, and documented (`docs/build/01-scrape.md`, `02-extract.md`,
+  `02b-dedup.md`, `03-score.md`). Treat all four as frozen.
+- Winner selected: `1155616497059211` — `video / talking_head_testimonial`,
+  rank 3 of 94, 40 days running. Hand-off artifact is `data/winner.json`.
+- **Active stage: `src/generate.py` (Part 2) — spec `docs/build/04-generate.md`**,
+  which does not exist yet. Do not start stage 04 until it lands.
+- Run order is fixed: scrape -> extract -> dedup -> score -> generate.

@@ -39,7 +39,7 @@ PRICE_IN_PER_MTOK = 2.00
 PRICE_OUT_PER_MTOK = 10.00
 
 IN_PATH = Path("data/ads_raw.json")
-OUT_PATH = Path("data/ads.json")
+OUT_PATH = Path("data/ads_extracted.json")   # labelled RECORDS; dedup.py consumes this
 
 # 145 sequential vision calls run ~12 min; a small stdlib pool cuts that to ~2.
 # Results are reassembled in input order, so the output file is byte-identical
