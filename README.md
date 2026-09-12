@@ -3,6 +3,16 @@
 Part 1 finds Scribe's best-performing Facebook ad; Part 2 rebuilds it as a Guidde
 creative brief. Run order is fixed: `scrape → extract → dedup → score → generate`.
 
+## The deliverable — open this first
+
+**[`results/storyboard.html`](results/storyboard.html)** — the creative brief and all 10
+storyboard shots in one page. Self-contained: every frame is embedded, so it renders by
+double-click in any browser, even if the file is moved or emailed.
+**[`results/storyboard.pdf`](results/storyboard.pdf)** is the same content if you prefer PDF.
+
+Part 1's reviewable artifacts sit alongside them: `results/02_scoreboard.md` (the ranked
+pattern table) and `results/03_winner.json` (the winning creative).
+
 ## Limitations & known issues
 
 **Meta publishes no spend or impression data for commercial ads.** `impression_bucket`
@@ -32,6 +42,15 @@ Note the constraint is doing real work: the two video clusters both score Patter
 0.000 (see the min-max brittleness below), so the choice between them falls to a documented
 tiebreak on cluster size — `video/talking_head_testimonial` (n=30) over
 `video/text_animation` (n=3). The selected creative is `1155616497059211`.
+
+**Storyboard frames are references; the end card is a brand composite.** Shots 1-9 are
+AI-generated visual references (`gpt-image-2`, 1024x1536, portrait) — mood and composition
+guides, not finished art, and deliberately free of text since image models garble type
+(captions and VO are metadata beside each frame). Shot 10, the end card, is NOT generated:
+it is assembled in HTML/CSS over the real Guidde vector wordmark (`assets/guidde_logo.svg`)
+with the CTA as real type on a real button in Guidde red `#CB0000`. Brand lockups are
+graphic elements an image model cannot render reliably, so the brand is applied as a real
+vector overlay — which is also how it is done in production.
 
 **The winner is NOT robust to the perf weighting.** The winning *cluster* flips between
 `image/text_animation` and `image/screen_demo` depending on how reach and longevity are

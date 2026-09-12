@@ -1,0 +1,80 @@
+{
+  "winner_ad_id": "1155616497059211",
+  "winning_pattern": "video / talking_head_testimonial",
+  "selection_constraint": {
+    "winner_formats": [
+      "video"
+    ],
+    "why": "Part 2 produces a shot-by-shot storyboard, which is a video artifact.",
+    "patternscore_tie_broken_on_cluster_size": true,
+    "unconstrained_winner_ad_id": "3252904458431344",
+    "unconstrained_pattern": "image / text_animation"
+  },
+  "start_date": "2026-08-03",
+  "days_running": 40,
+  "reach_standing": 0.9787,
+  "perf": 0.8642,
+  "winner_record": {
+    "ad_id": "1155616497059211",
+    "start_date": "2026-08-03",
+    "format": "video",
+    "impression_bucket": null,
+    "impression_rank": 3,
+    "structure_type": "talking_head_testimonial",
+    "hook_type": "bold statement about not quitting over a micromanaging boss",
+    "angle_or_usecase": "dealing with a micromanaging boss by giving employees independence/guidance without needing constant explanation",
+    "cta": "Learn more (implied via arrow emoji pointing down to link)",
+    "on_screen_text_style": "bold white sans-serif captions centered on screen, synced to speech"
+  },
+  "ranked_clusters": [
+    {
+      "cluster": "image / text_animation",
+      "n": 23,
+      "freq": 0.2447,
+      "perf": 0.2977,
+      "pattern_score": 0.1067
+    },
+    {
+      "cluster": "image / screen_demo",
+      "n": 12,
+      "freq": 0.1277,
+      "perf": 0.303,
+      "pattern_score": 0.052
+    },
+    {
+      "cluster": "image / before_after_comparison",
+      "n": 11,
+      "freq": 0.117,
+      "perf": 0.303,
+      "pattern_score": 0.0462
+    },
+    {
+      "cluster": "image / other",
+      "n": 7,
+      "freq": 0.0745,
+      "perf": 0.278,
+      "pattern_score": 0.0148
+    },
+    {
+      "cluster": "video / text_animation",
+      "n": 3,
+      "freq": 0.0319,
+      "perf": 0.6812,
+      "pattern_score": 0.0
+    },
+    {
+      "cluster": "video / talking_head_testimonial",
+      "n": 30,
+      "freq": 0.3191,
+      "perf": 0.2331,
+      "pattern_score": 0.0
+    },
+    {
+      "cluster": "image / talking_head_testimonial",
+      "n": 3,
+      "freq": 0.0319,
+      "perf": 0.4114,
+      "pattern_score": 0.0
+    }
+  ]
+}

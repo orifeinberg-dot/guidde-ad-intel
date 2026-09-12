@@ -295,7 +295,43 @@ def main():
         "ranked_clusters": [{**r, "cluster": _key_str(r["cluster"])}
                             for r in result["ranked_clusters"]],
     }, indent=2))
+    # Committed Part-1 deliverables. data/ is gitignored scratch; these two are the
+    # reviewable artifacts of the scoring stage — the ranked table a human reads, and the
+    # winner hand-off. Additive output only: no scoring logic is involved in writing them.
+    RESULTS = Path("results")
+    RESULTS.mkdir(exist_ok=True)
+
+    sb = ["# Scoreboard — ranked creative patterns", "",
+          f"{len(ads)} distinct creatives (deduplicated from raw ad records by dedup.py).",
+          f"PatternScore = norm(frequency) x norm(performance), a product: a pattern wins",
+          f"only if it is BOTH heavily repeated AND its instances survive.", "",
+          "| pattern (format / structure_type) | n | freq | perf | PatternScore |",
+          "|---|---|---|---|---|"]
+    for r in result["ranked_clusters"]:
+        sb.append(f"| {_key_str(r['cluster'])} | {r['n']} | {r['freq']:.3f} | "
+                  f"{r['perf']:.3f} | {r['pattern_score']:.3f} |")
+    sb += ["", "## Outliers — unproven experiments, excluded from winner selection", "",
+           f"Clusters of n <= {OUTLIER_MAX_SIZE} are too small to call a proven pattern.", ""]
+    for o in result["outliers"]:
+        sb.append(f"- `{_key_str(o['cluster'])}` (n={o['n']}): {', '.join(o['ad_ids'])}")
+    sb += ["", "## Winner", "",
+           f"Unconstrained (top PatternScore, all clusters): `{w.ad_id}` "
+           f"— {_key_str(result['winning_cluster'])}", ""]
+    if c:
+        sb.append(f"Video-constrained (WINNER_FORMATS={WINNER_FORMATS}; Part 2 needs a "
+                  f"storyboard): **`{cw.ad_id}`** — {_key_str(c['cluster'])}, "
+                  f"rank {cw.impression_rank} of {len(ads)}, {cw.days_running} days running.")
+        if c["tied"]:
+            sb.append("")
+            sb.append("Both video clusters score PatternScore 0.000 (min-max sends an "
+                      "axis-minimum cluster to zero and the product annihilates it), so the "
+                      "tie was broken on cluster size n — the most-repeated proven formula.")
+    (RESULTS / "02_scoreboard.md").write_text("\n".join(sb) + "\n")
+    (RESULTS / "03_winner.json").write_text((Path("data/winner.json")).read_text())
+
     print("\nWrote data/winner.json")
+    print("Wrote results/02_scoreboard.md  (committed: the ranked table)")
+    print("Wrote results/03_winner.json    (committed: winner hand-off)")
 
     print("\nSensitivity — does the winning cluster survive a different perf blend?")
     print(f"  {'weights (reach/longevity)':30} {'winning cluster':36} winner")

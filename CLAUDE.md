@@ -34,7 +34,7 @@ manual qualification (done → Scribe)
        └─> src/extract.py → data/ads_extracted.json   [Part 1]  (labels those records)
            └─> src/dedup.py → data/ads.json           [Part 1]  (152 recs → 94 creatives)
                └─> src/score.py → data/winner.json    [Part 1]
-                   └─> src/generate.py → results/brief.md + results/storyboard/   [Part 2]
+                   └─> src/generate.py → results/04_brief.md + results/05_storyboard/  [Part 2]
 
 RUN ORDER IS FIXED: scrape → extract → dedup → score. Each stage reads a DIFFERENT file
 than it writes, on purpose. dedup.py resolves label conflicts by majority vote across a
@@ -94,9 +94,16 @@ product annihilates it — `video/talking_head_testimonial` holds the minimum pe
 insertion order. Ties break on cluster size `n`, the tiebreak most faithful to the stated
 definition of best: the most-repeated, durability-proven formula (n=30 vs n=3).
 
-## Corrections — score.py unfrozen twice, 2026-09-12
-Once for the unit bug below, once for the video selection constraint above. Both are
-recorded here; neither re-litigates the definition of best.
+## Corrections — score.py unfrozen three times, 2026-09-12
+Once for the unit bug below, once for the video selection constraint above, once to write
+its committed artifacts. All are recorded here; none re-litigates the definition of best.
+
+### Unfreeze 3 — score.py now writes its committed artifacts
+The repo layout promised `results/02_scoreboard.md` and `results/03_winner.json`, but
+nothing produced them — they were phantom deliverables. `score.py` now writes both at the
+end of `main()`: the ranked cluster table a human actually reads, and the winner hand-off.
+This is ADDITIVE OUTPUT only — no scoring logic is touched, and `data/winner.json` is
+still written exactly as before. The layout block is now true.
 
 ### Unfreeze 1 — a unit bug
 `score.py` was frozen. It was unfrozen for ONE correctness fix, not to re-litigate "best":
@@ -122,9 +129,12 @@ After the fix, creatives >=30 days old score 4.7x the <=7 day ones — age reads
 guidde-ad-intel/
 ├─ CLAUDE.md              (this file)
 ├─ README.md  .env  .env.example  .gitignore  requirements.txt  architecture.mermaid
-├─ src/       scrape.py ✓  extract.py ✓  dedup.py ✓  score.py ✓  generate.py
-├─ data/      ads_raw.json  ads.json  winner.json      (gitignored scratch)
-├─ results/   02_scoreboard.md  03_winner.json  04_brief.md  05_storyboard/   (committed)
+├─ src/       scrape.py ✓  extract.py ✓  dedup.py ✓  score.py ✓  generate.py ✓
+├─ data/      ads_raw.json  ads_extracted.json  ads.json  winner.json
+│             media_hashes.json  preview/                 (gitignored scratch)
+├─ results/   02_scoreboard.md  03_winner.json  04_brief.md            (committed)
+│             05_storyboard/ (9 generated frames)  05_storyboard.json  05_storyboard.md
+│             storyboard.html  storyboard.pdf
 └─ docs/build/  01-scrape.md  02-extract.md  02b-dedup.md  03-score.md
                 04-generate.md                                  (per-stage specs)
 ```
@@ -145,5 +155,9 @@ committed. Load with `python-dotenv`. Never print or commit a key.
   `02b-dedup.md`, `03-score.md`). Treat all four as frozen.
 - Winner selected: `1155616497059211` — `video / talking_head_testimonial`,
   rank 3 of 94, 40 days running. Hand-off artifact is `data/winner.json`.
-- **Active stage: `src/generate.py` (Part 2) — build per spec `docs/build/04-generate.md`.**
+- Part 2 COMPLETE: `src/generate.py` — built, run, and documented
+  (`docs/build/04-generate.md`). Produced `results/04_brief.md`, `05_storyboard/` (9 generated frames; shot 10 is the
+  HTML end card),
+  `05_storyboard.json`, `05_storyboard.md`, `storyboard.html`, `storyboard.pdf`.
+- **No active stage — the pipeline is complete end to end.**
 - Run order is fixed: scrape -> extract -> dedup -> score -> generate.

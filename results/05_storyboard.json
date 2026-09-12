@@ -1,0 +1,141 @@
+{
+  "brief": {
+    "objective": "Drive trial signups for Guidde by making a UGC-style story ad that earns attention through narrative before revealing the product, positioned for paid social (Meta/TikTok feed).",
+    "audience": "Individual contributors and team leads in ops, IT, support, and cross-functional roles who are the informal 'go-to' person for how things work \u2014 overworked, under-recognized, tired of repeating themselves.",
+    "winning_formula": "The 'earned reveal' testimonial formula: 8 of 10 shots are pure story with zero product, the product appears in exactly 2 adjacent shots at the runtime's midpoint, those 2 shots are cut noticeably faster than everything around them, and the ad closes on a status claim instead of a benefit claim. It works because it disguises an ad as a personal confession long enough that the audience's guard is down when the product appears, and it makes the payoff about the viewer's standing at work, not the software's feature set \u2014 which is far more shareable and far less skippable.",
+    "adaptation_rationale": "Carried over: single handheld presenter talking direct-to-camera, a contrarian imperative hook, a mid-ad two-shot demo (capture, then artifact) placed dead-centre, an accelerating edit into the demo, and a status/leverage payoff. Changed: the scenario moves from 'surviving a micromanaging boss' to 'being the single point of knowledge-failure on a team' \u2014 a broader, less HR-risky pain that still produces the same posture (undismissable). The product beat is now explicitly Guidde (capture once, auto-generated walkthrough) instead of a competitor's UI. The payoff line is rewritten as a career-visibility claim, not a firing-avoidance claim. The weak spoken-only CTA is upgraded to a clean end card with headline, button, and URL \u2014 the one deliberate structural improvement.",
+    "hook": "If you're the only person who knows how something works, don't just quietly panic every time you go on vacation.",
+    "angle": "Becoming the person leadership can't overlook \u2014 not by working more, but by making your knowledge visible without extra effort, using Guidde to auto-document your process as you do it.",
+    "key_message": "You don't have to choose between doing the work and getting credit for knowing it \u2014 Guidde turns the work you already do into proof, automatically.",
+    "tone_and_casting": "One presenter, mid-30s, casual and slightly wry, talking straight into a phone camera, handheld, in a lived-in home office. Conspiratorial register \u2014 talking to a peer who's also tired of being everyone's tribal knowledge, not pitching them.",
+    "format_specs": "9:16 vertical, ~43 seconds, phone-shot handheld UGC look, natural available light, no music bed, continuous fragment captions (2-4 words) burned in bold white sans-serif with black outline, centered, synced to speech; final 3 seconds cut to a static end card.",
+    "cta": "End card: Guidde logo, headline 'Turn what you know into proof,' button 'Try Guidde Free,' URL guidde.com supered cleanly \u2014 no clutter, 3-second hold."
+  },
+  "shots": [
+    {
+      "shot": 1,
+      "start": 0.0,
+      "end": 4.6,
+      "beat": "hook",
+      "pacing": "slow take",
+      "product_visible": false,
+      "visual": "Presenter close on phone camera, mug in hand, mid-sentence, direct eye contact, casual home office behind her.",
+      "vo": "If you're the only one who knows how something works, don't panic every time you go on vacation. Record it instead.",
+      "caption": "don't panic. record it instead.",
+      "image_prompt": "(cached run \u2014 frame already rendered) No text, no captions, no logos, no watermarks."
+    },
+    {
+      "shot": 2,
+      "start": 4.6,
+      "end": 7.6,
+      "beat": "problem",
+      "pacing": "slow take",
+      "product_visible": false,
+      "visual": "Presenter leans in slightly, more animated, conceding the obvious reaction before rejecting it.",
+      "vo": "Most people just wait for the fire. I used to be that person too.",
+      "caption": "i used to be that person too",
+      "image_prompt": "(cached run \u2014 frame already rendered) No text, no captions, no logos, no watermarks."
+    },
+    {
+      "shot": 3,
+      "start": 7.6,
+      "end": 15.5,
+      "beat": "mechanism",
+      "pacing": "slow take",
+      "product_visible": false,
+      "visual": "Presenter gestures broadly while explaining the behaviour change, camera holds steady on her talking.",
+      "vo": "So I stopped being the single point of failure. Every fix, every workaround, every 'wait, how'd you do that' \u2014 I started capturing it live, the moment it happened.",
+      "caption": "i started capturing it live",
+      "image_prompt": "(cached run \u2014 frame already rendered) No text, no captions, no logos, no watermarks."
+    },
+    {
+      "shot": 4,
+      "start": 15.5,
+      "end": 22.1,
+      "beat": "mechanism",
+      "pacing": "slow take",
+      "product_visible": false,
+      "visual": "Presenter points at camera, building toward the reveal of the tool, tone confident.",
+      "vo": "Guidde makes that automatic. I'm not writing anything, I'm not slowing down to explain twice. I just work \u2014 and it turns out documented.",
+      "caption": "i just work. it turns out documented",
+      "image_prompt": "(cached run \u2014 frame already rendered) No text, no captions, no logos, no watermarks."
+    },
+    {
+      "shot": 5,
+      "start": 22.1,
+      "end": 24.6,
+      "beat": "product_demo",
+      "pacing": "fast cut",
+      "product_visible": true,
+      "visual": "Screen-capture overlay appears over the presenter: a generic software interface recording her steps in real time, cursor moving, a step being highlighted as it's clicked.",
+      "vo": "I walk through the process once,",
+      "caption": "i walk through it once",
+      "image_prompt": "(cached run \u2014 frame already rendered) No text, no captions, no logos, no watermarks."
+    },
+    {
+      "shot": 6,
+      "start": 24.7,
+      "end": 26.6,
+      "beat": "product_demo",
+      "pacing": "fast cut",
+      "product_visible": true,
+      "visual": "Overlay shifts to the finished artifact: a clean auto-generated step-by-step guide with numbered steps and screenshots, scrolling briefly.",
+      "vo": "and it builds the full guide \u2014 screenshots and all \u2014 automatically.",
+      "caption": "it builds the guide automatically",
+      "image_prompt": "(cached run \u2014 frame already rendered) No text, no captions, no logos, no watermarks."
+    },
+    {
+      "shot": 7,
+      "start": 26.6,
+      "end": 30.1,
+      "beat": "payoff",
+      "pacing": "slow take",
+      "product_visible": false,
+      "visual": "Presenter back in full frame, relaxed, recounting the first outcome.",
+      "vo": "Now when someone asks how to do the thing, I don't hop on a call. I send a link.",
+      "caption": "i send a link",
+      "image_prompt": "(cached run \u2014 frame already rendered) No text, no captions, no logos, no watermarks."
+    },
+    {
+      "shot": 8,
+      "start": 30.1,
+      "end": 33.0,
+      "beat": "payoff",
+      "pacing": "slow take",
+      "product_visible": false,
+      "visual": "Presenter shrugs lightly, unbothered, describing a second scenario.",
+      "vo": "When I'm out sick, nobody waits on me. They open a guide.",
+      "caption": "nobody waits on me",
+      "image_prompt": "(cached run \u2014 frame already rendered) No text, no captions, no logos, no watermarks."
+    },
+    {
+      "shot": 9,
+      "start": 33.0,
+      "end": 40.0,
+      "beat": "payoff",
+      "pacing": "slow take",
+      "product_visible": false,
+      "visual": "Presenter delivers the closing status line with quiet confidence, steady eye contact, no props.",
+      "vo": "When leadership finally mapped out who actually keeps this place running, my name was on half the docs. At this point, I'm too visible to overlook and too proven to pass over.",
+      "caption": "too visible to overlook. too proven to pass over.",
+      "image_prompt": "(cached run \u2014 frame already rendered) No text, no captions, no logos, no watermarks."
+    },
+    {
+      "shot": 10,
+      "start": 40.0,
+      "end": 43.0,
+      "beat": "cta",
+      "pacing": "slow take",
+      "product_visible": false,
+      "visual": "Cut to a clean static end card: logo mark, short headline, a button shape, and a URL line, held on screen.",
+      "vo": "If that sounds like you, go make yourself impossible to overlook.",
+      "caption": "try guidde free \u2014 guidde.com",
+      "image_prompt": "(cached run \u2014 frame already rendered) No text, no captions, no logos, no watermarks."
+    }
+  ],
+  "end_card": {
+    "headline": "Turn what you know into proof",
+    "button": "Try Guidde Free",
+    "url": "guidde.com"
+  }
+}
