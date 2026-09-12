@@ -145,6 +145,5 @@ committed. Load with `python-dotenv`. Never print or commit a key.
   `02b-dedup.md`, `03-score.md`). Treat all four as frozen.
 - Winner selected: `1155616497059211` — `video / talking_head_testimonial`,
   rank 3 of 94, 40 days running. Hand-off artifact is `data/winner.json`.
-- **Active stage: `src/generate.py` (Part 2) — spec `docs/build/04-generate.md`**,
-  which does not exist yet. Do not start stage 04 until it lands.
+- **Active stage: `src/generate.py` (Part 2) — build per spec `docs/build/04-generate.md`.**
 - Run order is fixed: scrape -> extract -> dedup -> score -> generate.
