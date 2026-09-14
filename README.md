@@ -209,6 +209,12 @@ pipeline dependency, so it's deliberately not in `requirements.txt`.
 **Winner:** Scribe `1155616497059211` — a ~43-second vertical video talking-head testimonial,
 `video/talking_head_testimonial`, that demonstrates the product mid-way through.
 
+**Watch it:** [`results/winning_ad_1155616497059211.mp4`](results/winning_ad_1155616497059211.mp4)
+— the actual winning creative, committed to this repo so the teardown below can be checked
+against the source. Secondary reference: the Meta Ad Library listing at
+<https://www.facebook.com/ads/library/?id=1155616497059211>, which is unreliable — entries
+disappear once an ad stops running, and the library is region-gated.
+
 The teardown surfaced three things frame-only analysis could never see, and each shaped the
 rebuild:
 
@@ -328,6 +334,7 @@ docs/build/     01-scrape.md  02-extract.md  02b-dedup.md  03-score.md  04-gener
 assets/         guidde_logo.svg
 results/        02_scoreboard.md  03_winner.json  04_brief.md
                 05_storyboard/ (9 frames)  05_storyboard.md  storyboard.html  storyboard.pdf
+                winning_ad_1155616497059211.mp4  (the winning creative itself)
 data/           (gitignored — regenerated each run)
 ```
 
